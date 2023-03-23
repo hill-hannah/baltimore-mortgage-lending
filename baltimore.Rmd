@@ -1,0 +1,414 @@
+
+
+```{r load libraries and data}
+library(tidyverse)
+library(sf)
+library(tigris) # Baltimore city and county polygons
+library(tmap)
+library(ggplot2)
+library(urbnthemes)
+
+#downloaded rehab data on February 14, 2023.
+rehabs <- 
+  read_sf("data/shapefiles/ob_Rehabbed_VBN_Pt_flat.shp")
+
+tracts <- 
+  st_as_sf(tracts("MD", "Baltimore City")) %>%
+  separate(GEOID, c("county", "tract"), sep='24510') %>%
+  select(-county)
+
+balt_co <- 
+  counties("MD") %>%
+  filter(
+    NAMELSAD %in%
+      c("Baltimore County")) %>%
+    st_as_sf(
+    coords = c('longitude', 'latitude'),
+    crs = 4326)
+
+metro <-
+  read_sf("data/shapefiles/TRAN_BaltimoreMetroSubwayStops_MTA.shp")
+
+mta <-
+    read_sf("data/shapefiles/TRAN_MTABusLines_MTA.shp")
+```
+
+
+```{r basic map}
+tmap_mode("view")
+
+# basic plot of where vacancy rehabs are taking place
+tm_shape(tracts) +
+  tm_polygons() +
+  tm_shape(rehabs) +
+  tm_dots(alpha = .5)
+
+# where the transit lines are
+tm_shape(tracts) +
+  tm_fill() +
+  tm_shape(mta) +
+  tm_lines()
+
+# map overlaying transit lines on vacancies, with clustering
+tm_shape(tracts) +
+  tm_borders() +
+  tm_shape(rehabs) +
+  tm_dots(alpha = .3, clustering = T) +
+  tm_shape(mta) +
+  tm_lines()
+
+# map, with clustering
+tm_shape(tracts) +
+  tm_borders() +
+  tm_shape(rehabs) +
+  tm_dots(alpha = .3, clustering = T)
+
+rehabs %>%
+  pull(Neighborho) %>%
+  table() %>%
+  sort()
+
+tm_shape(tracts) +
+  tm_borders() +
+  tm_shape(rehabs) +
+  tm_dots(alpha = .5, col = "red")
+```
+
+```{r}
+# trying through bubbles instead of clustering
+tm_shape(tracts) +
+  tm_borders() +
+  tm_shape(rehabs  %>% mutate(BLOCKLOT = as.numeric(BLOCKLOT))) +
+  tm_bubbles(col = "HousingMar") +
+  tm_shape(mta) +
+  tm_lines()
+# the above is good! just would need to further select specific housing market
+# to eliminate noise
+
+
+# trying through bubbles instead of clustering
+tm_shape(tracts) +
+  tm_borders() +
+  tm_shape(rehabs  %>% mutate(BLOCKLOT = as.numeric(BLOCKLOT))) +
+  tm_bubbles(col = "Council_Di", size = ) +
+  tm_shape(mta) +
+  tm_lines()
+
+```
+
+# Home Mortgage Disclosure Act (HMDA) : 2017-2021
+
+```{r reading and cleaning multiple years of hmda data}
+hmda2021 <- read_csv("data/raw/hmda2021.csv")
+
+clean2021 <- 
+  hmda2021 %>%
+  
+  # filter for conventional and FHA:
+  
+  filter(loan_type == '1' | loan_type == '2') %>%
+  
+  # filter for home purchase and home improvement:
+  
+  filter(loan_purpose == '1' | loan_purpose == '2') %>%
+  
+  # filter for principal residence: 
+  
+  filter(occupancy_type == '1') %>%
+  
+  # pull tract number from combined id
+  separate(census_tract, c("county", "tract"), sep='24510') %>%
+  select(-county_code, -county)
+rm(hmda2021)
+
+hmda2018 <- read_csv("data/raw/hmda2018.csv")
+
+clean2018 <- hmda2018 %>%
+    # filter for conventional and FHA:
+  
+  filter(loan_type == '1' | loan_type == '2') %>%
+  
+  # filter for home purchase and home improvement:
+  
+  filter(loan_purpose == '1' | loan_purpose == '2') %>%
+  
+  # filter for principal residence: 
+  
+  filter(occupancy_type == '1') %>%
+  
+  # pull tract number from combined id
+  separate(census_tract, c("county", "tract"), sep='24510') %>%
+  select(-county_code, -county)
+rm(hmda2018)
+
+hmda2019 <- read_csv("data/raw/hmda2019.csv")
+
+clean2019 <- hmda2019 %>%
+  
+    # filter for conventional and FHA:
+  
+  filter(loan_type == '1' | loan_type == '2') %>%
+  
+  # filter for home purchase and home improvement:
+  
+  filter(loan_purpose == '1' | loan_purpose == '2') %>%
+  
+  # filter for principal residence: 
+  
+  filter(occupancy_type == '1') %>%
+  
+  # pull tract number from combined id
+  separate(census_tract, c("county", "tract"), sep='24510') %>%
+  select(-county_code, -county)
+rm(hmda2019)
+
+hmda2020 <- read_csv("data/raw/hmda2020.csv")
+
+clean2020 <- hmda2020 %>%
+    # filter for conventional and FHA:
+  
+  filter(loan_type == '1' | loan_type == '2') %>%
+  
+  # filter for home purchase and home improvement:
+  
+  filter(loan_purpose == '1' | loan_purpose == '2') %>%
+  
+  # filter for principal residence: 
+  
+  filter(occupancy_type == '1') %>%
+  
+  # pull tract number from combined id
+  separate(census_tract, c("county", "tract"), sep='24510') %>%
+  select(-county_code, -county)
+rm(hmda2020)
+
+hmda <- clean2018 %>%
+  full_join(clean2019) %>%
+  full_join(clean2020) %>%
+  rename(year = activity_year) %>%
+  select(-state_code) %>%
+  full_join(clean2021)
+
+hmda$derived_race <- 
+  replace(hmda$derived_race, startsWith(hmda$derived_race, '2'), 'Two or more')
+
+# to assure full joining between all years:
+#library(waldo)
+#compare(names(hmda), names(clean2021))
+
+# remove other dataframes
+rm(clean2018)
+rm(clean2019)
+rm(clean2020)
+rm(clean2021)
+
+# merge with sf
+merge <-
+  tracts %>%
+  left_join(hmda) %>%
+  select(year, lei, derived_race, derived_ethnicity, derived_loan_product_type,
+         applicant_race_observed, applicant_sex, applicant_age, interest_rate,
+         property_value, loan_term, loan_amount, balloon_payment, income, debt_to_income_ratio,
+         "denial_reason-1", tract_population, tract_minority_population_percent, 
+         ffiec_msa_md_median_family_income, tract_to_msa_income_percentage, NAME,
+         geometry, ALAND, AWATER, INTPTLAT, INTPTLON) %>%
+  separate(col = derived_loan_product_type,
+           into = c("loan_type", "lien_type"),
+           sep = ":")
+
+# remove hdma
+rm(hmda)
+```
+
+
+```{r }
+hmda %>% pull(lei) %>% unique()
+# 532 unique lenders. too many to rename. just explore which LEIs may have discriminatory lending policies, then go to https://search.gleif.org/#/search/simpleSearch=RVDPPPGHCGZ40J4VQ731&fulltextFilterId=LEIREC_FULLTEXT&currentPage=1&perPage=15&expertMode=false#search-form and find the name of the place.
+
+hmda %>%
+  select(lei, tract, action_taken, derived_race, derived_sex, loan_amount, interest_rate)
+  # find average loan amount or avg interest rate by census tract, then facet_grid by year
+  
+
+# top 10 lenders w most number of applications OVERALL 2018-2021:
+hmda %>%
+  count(lei) %>%
+  arrange(desc(n)) %>%
+  top_n(10)
+#1 - 6BYL5QZYBDK8S7L73M02 - US National Bank Association
+#2 - 549300GPO6DWUZR4UY30 - First Home Mortgage Corporation
+#3 - 54930052M48FOD3CWA54 - Primary Residential Mortgage, Inc.
+#4 - WWB2V0FCW3A0EE3ZJN75 - People's United Bank, National Association (RETIRED)
+#5 - KB1H1DSPRFMYMCUFXT09 - Wells Fargo Bank, National Association
+#6 - B4TYDEB6GKMZO031MB27 - Bank of America, National Association
+#7 - JJKC32MCHWDI71265Z06 - Used to be SunTrust Bank, National Penn Bank, and is now Truist Bank. investigate more on years.
+#8 - RVDPPPGHCGZ40J4VQ731 - PennyMac Loan Services, LLC
+#9 -549300MCIFZSDHUT8X63 - NFM, Inc.
+#10 - 549300J7XKT2BI5WX213 - Caliber Home Loans, Inc.
+```
+
+```{r top 10 lenders by year}
+hmda %>%
+  filter(year == "2018") %>%
+  count(lei) %>%
+  arrange(desc(n)) %>%
+  top_n(10)
+
+hmda %>%
+  filter(year == "2019") %>%
+  count(lei) %>%
+  arrange(desc(n)) %>%
+  top_n(10)
+
+hmda %>%
+  filter(year == "2020") %>%
+  count(lei) %>%
+  arrange(desc(n)) %>%
+  top_n(10)
+
+hmda %>%
+  filter(year == "2021") %>%
+  count(lei) %>%
+  arrange(desc(n)) %>%
+  top_n(10)
+```
+
+## Guiding Questions
+
+Question 1: How does mortgage lending approvals, denials, and interest rates look for applicants of 
+different income levels but within the same census tract?
+```{r mortgage denial rates}
+
+# USE https://revealnews.org/article/how-we-identified-lending-disparities-in-federal-mortgage-data/ FOR METHODOLOGY!!!!
+merge %>%
+  
+  # filter just loan originating and app denials
+  
+  filter(action_taken == "1" | action_taken == "3") %>%
+  
+  # group by racial groups to prepare for new tally column by race
+  
+  group_by(derived_race, year) %>%
+  
+  # transform to character: 
+  mutate(derived_race = as.character(derived_race)) %>%
+  
+  # create new column of total apps by year and racial group:
+  summarise(total_apps = n()) %>%
+  
+  # need to divide number of denied apps by total_apps
+  
+  summarise(n_denied = n(merge %>% filter(action_taken == "3")))
+  
+  
+
+
+```
+
+
+
+```{r interest rates}
+
+# # NONE OF THE CODE IS WORKING
+# # 2018
+# q1 <- 
+#   merge[!(is.na(merge$interest_rate)), ] %>%
+#   filter(interest_rate != "exempt") %>%
+#   mutate(interest_rate = as.numeric(interest_rate)) %>%
+#   filter(interest_rate <= "12")
+# 
+# mean(q1$interest_rate)
+# q1 %>%
+#   filter(year == "2018") %>%
+#   mean(interest_rate)
+# median(q1$interest_rate)
+# 
+# # q1 %>%
+# #   summarise(count = sum(is.na(interest_rate)))
+  
+```
+
+
+Question 2: Do racial identities of applicants match their applications and what the lender reported?
+
+Question 3: Which census tracts are most vulnerable to lending deserts?
+
+Question 4: How does mortgage lending approvals and denials compare across lower land costs and higher land costs in census tracts?
+
+Question 5: How does increasing wealth disparities impact mortgage lending within a census tract 
+over time?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r mapping hmda with census tracts}
+tmap_mode("view")
+
+merge %>%
+  mutate(property_value = as.numeric(property_value)) %>%
+  drop_na(property_value) %>%
+  mutate(prop_value =
+           case_when(
+             property_value < 100000 ~ 'low',
+             property_value < 300000 ~ 'medium',
+             property_value < 450000 ~ 'high',
+             property_value >= 700000 ~ "very high") %>%
+
+           # set specific order of factors:
+
+           fct_relevel(
+             c("low",
+               "medium",
+               "high",
+               "very high"))) %>%
+
+
+  # map rat densities by factors:
+
+  tm_shape() +
+  tm_polygons(col = "prop_value", palette = "viridis", border.col = "white", id = "tract", title = "Property Value")
+```
+
+
+```{r}
+merge %>%
+  mutate(loan_amount = as.numeric(loan_amount)) %>%
+  drop_na(loan_amount) %>%
+  mutate(loan_amt =
+           case_when(
+             loan_amount < 30000 ~ 'low',
+             loan_amount < 100000 ~ 'medium',
+             loan_amount < 250000 ~ 'high',
+             loan_amount >= 250001 ~ "very high") %>%
+
+           # set specific order of factors:
+
+           fct_relevel(
+             c("low",
+               "medium",
+               "high",
+               "very high"))) %>%
+
+
+  # map rat densities by factors:
+
+  tm_shape() +
+  tm_polygons(col = "loan_amt", palette = "viridis", border.col = "white", id = "NAME", title = "Loan Amount")
+```
+
