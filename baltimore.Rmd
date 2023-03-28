@@ -98,7 +98,7 @@ tm_shape(tracts) +
 
 # Home Mortgage Disclosure Act (HMDA) : 2017-2021
 
-```{r reading and cleaning multiple years of hmda data}
+```{r read and clean, message = FALSE, warning = FALSE}
 hmda2021 <- read_csv("data/raw/hmda2021.csv")
 
 clean2021 <- 
@@ -206,32 +206,70 @@ rm(clean2021)
 merge <-
   tracts %>%
   left_join(hmda) %>%
-  select(year, lei, derived_race, derived_ethnicity, derived_loan_product_type,
-         applicant_race_observed, applicant_sex, applicant_age, interest_rate,
-         property_value, loan_term, loan_amount, balloon_payment, income, debt_to_income_ratio,
-         "denial_reason-1", tract_population, tract_minority_population_percent, 
-         ffiec_msa_md_median_family_income, tract_to_msa_income_percentage, NAME,
-         geometry, ALAND, AWATER, INTPTLAT, INTPTLON) %>%
+  select(year, lei, action_taken, derived_race, derived_ethnicity, derived_loan_product_type, applicant_race_observed, applicant_sex, applicant_age, interest_rate, property_value, loan_term, loan_amount, loan_purpose, discount_points, balloon_payment, income, debt_to_income_ratio, "denial_reason-1", tract_population, tract_minority_population_percent, ffiec_msa_md_median_family_income, tract_to_msa_income_percentage, NAME, geometry, ALAND, AWATER, INTPTLAT, INTPTLON, construction_method, occupancy_type) %>%
   separate(col = derived_loan_product_type,
            into = c("loan_type", "lien_type"),
-           sep = ":")
+           sep = ":") %>%
+  
+  # filter built sites only:
+  filter(construction_method == "1") %>%
+  
+  # filter loans for home purchase only:
+  filter(loan_purpose == "1") %>%
+  
+  # keep loans that were originated or denied:
+  filter(action_taken == "1" | action_taken == "3")
 
-# remove hdma
+# create total number of apps by race and year:
+totalapps <-
+  hmda %>%
+  group_by(derived_race, year) %>%
+  summarise(total_apps = n())
+
+# calculate n_denied:
+denied <-
+  hmda %>%
+  filter(action_taken == "3") %>%
+  group_by(derived_race, year) %>%
+  summarise(denied_apps = n())
+
+# calculate n_approved:
+originated <-
+  hmda %>%
+  filter(action_taken == "1") %>%
+  group_by(derived_race, year) %>%
+  summarise(originated_apps = n())
+
+# append the number of apps back into main df:
+clean_hmda <-
+  merge %>%
+  full_join(totalapps) %>%
+  full_join(denied) %>%
+  full_join(originated) %>%
+  filter(derived_race != 
+           c("Free Form Text Only",
+             "Joint",
+             "Native Hawaiian or Other Pacific Islander")) %>%
+  # make all columns numeric
+ mutate_at(11:18, as.numeric) %>%
+  #filter out unmatched values to methodology:
+  rename(denial_reason = "denial_reason-1") %>%
+  filter(denial_reason != "1111")
+
+
+# remove misc df's:
 rm(hmda)
+rm(totalapps)
+rm(merge)
 ```
 
 
 ```{r }
-hmda %>% pull(lei) %>% unique()
+clean_hmda %>% pull(lei) %>% unique()
 # 532 unique lenders. too many to rename. just explore which LEIs may have discriminatory lending policies, then go to https://search.gleif.org/#/search/simpleSearch=RVDPPPGHCGZ40J4VQ731&fulltextFilterId=LEIREC_FULLTEXT&currentPage=1&perPage=15&expertMode=false#search-form and find the name of the place.
 
-hmda %>%
-  select(lei, tract, action_taken, derived_race, derived_sex, loan_amount, interest_rate)
-  # find average loan amount or avg interest rate by census tract, then facet_grid by year
-  
-
 # top 10 lenders w most number of applications OVERALL 2018-2021:
-hmda %>%
+clean_hmda %>%
   count(lei) %>%
   arrange(desc(n)) %>%
   top_n(10)
@@ -248,30 +286,31 @@ hmda %>%
 ```
 
 ```{r top 10 lenders by year}
-hmda %>%
+clean_hmda %>%
   filter(year == "2018") %>%
   count(lei) %>%
   arrange(desc(n)) %>%
   top_n(10)
 
-hmda %>%
+clean_hmda %>%
   filter(year == "2019") %>%
   count(lei) %>%
   arrange(desc(n)) %>%
   top_n(10)
 
-hmda %>%
+clean_hmda %>%
   filter(year == "2020") %>%
   count(lei) %>%
   arrange(desc(n)) %>%
   top_n(10)
 
-hmda %>%
+clean_hmda %>%
   filter(year == "2021") %>%
   count(lei) %>%
   arrange(desc(n)) %>%
   top_n(10)
 ```
+
 
 ## Guiding Questions
 
@@ -280,6 +319,8 @@ different income levels but within the same census tract?
 ```{r mortgage denial rates}
 
 # USE https://revealnews.org/article/how-we-identified-lending-disparities-in-federal-mortgage-data/ FOR METHODOLOGY!!!!
+
+
 merge %>%
   
   # filter just loan originating and app denials
@@ -314,7 +355,6 @@ merge %>%
 # q1 <- 
 #   merge[!(is.na(merge$interest_rate)), ] %>%
 #   filter(interest_rate != "exempt") %>%
-#   mutate(interest_rate = as.numeric(interest_rate)) %>%
 #   filter(interest_rate <= "12")
 # 
 # mean(q1$interest_rate)
