@@ -1,6 +1,4 @@
-
-
-```{r load libraries and data}
+```{r load libraries and data, message = FALSE, warning = FALSE}
 library(tidyverse)
 library(sf)
 library(tigris) # Baltimore city and county polygons
@@ -187,7 +185,8 @@ hmda <- clean2018 %>%
   full_join(clean2020) %>%
   rename(year = activity_year) %>%
   select(-state_code) %>%
-  full_join(clean2021)
+  full_join(clean2021) %>%
+  filter(action_taken == "1" | action_taken == "3")
 
 hmda$derived_race <- 
   replace(hmda$derived_race, startsWith(hmda$derived_race, '2'), 'Two or more')
@@ -220,6 +219,8 @@ merge <-
   # keep loans that were originated or denied:
   filter(action_taken == "1" | action_taken == "3")
 
+
+########## TOTAL APPS BY RACE #############################################
 # create total number of apps by race and year:
 totalapps <-
   hmda %>%
@@ -256,11 +257,10 @@ clean_hmda <-
   rename(denial_reason = "denial_reason-1") %>%
   filter(denial_reason != "1111")
 
-
 # remove misc df's:
-rm(hmda)
-rm(totalapps)
-rm(merge)
+# rm(hmda)
+# rm(totalapps)
+# rm(merge)
 ```
 
 
@@ -319,30 +319,33 @@ different income levels but within the same census tract?
 ```{r mortgage denial rates}
 
 # USE https://revealnews.org/article/how-we-identified-lending-disparities-in-federal-mortgage-data/ FOR METHODOLOGY!!!!
+tmap_mode("view")
+censusapps <- clean_hmda %>%
+  # create total number of apps by race and year:
+  group_by(NAME, year, derived_race) %>%
+  summarise(n_census_apps = n())
+# denials <- clean_hmda %>%
+#   # create n_denied apps
+#   filter(action_taken == "3") %>%
+#   group_by(NAME, year, derived_race) %>%
+#   summarise(denied_apps = n())
 
 
-merge %>%
-  
-  # filter just loan originating and app denials
-  
-  filter(action_taken == "1" | action_taken == "3") %>%
-  
-  # group by racial groups to prepare for new tally column by race
-  
-  group_by(derived_race, year) %>%
-  
-  # transform to character: 
-  mutate(derived_race = as.character(derived_race)) %>%
-  
-  # create new column of total apps by year and racial group:
-  summarise(total_apps = n()) %>%
-  
-  # need to divide number of denied apps by total_apps
-  
-  summarise(n_denied = n(merge %>% filter(action_taken == "3")))
-  
-  
+# JOINING IS CAUSING ISSUE. DUPLICATES OF NAME, YEAR, RACE.
+#  may need to merge tracts df at end right before mapping?
+sf_hmda <- st_join(clean_hmda,
+                   censusapps,
+                   left = TRUE)
 
+  # mutate(denial_rate = denied_apps/n_census_apps) %>%
+  # filter(year == "2018") %>%
+  # tm_shape() +
+  # tm_polygons(col = "denial_rate")
+
+sf_hmda %>%
+  filter(year == "2018") %>%
+  tm_shape() +
+  tm_polygons(col = "n_census_apps")
 
 ```
 
