@@ -1,26 +1,4 @@
-Mortgage Lending in Baltimore
-A geospatial analysis of Baltimore City's mortgage lending patterns across census tracts between 2018 and 2021.
+# Lending Discrimination in Baltimore's Housing Market
+Click [here](https://github.com/hill-hannah/baltimore-mortgage-lending/blob/2ae392436b5b4641d8a1089a3e54a399d7552cb8/outputs/Hill%2C%20Writing%20Sample.pdf) for the final (mock) recommendation to Baltimore City Mayor Brandon Scott.
 
-
-### Methodology
-#### Loan Type
-I filtered for conventional
-1 conventional
-2 federal housing administration insured (FHA)
-
-
-#### Occupancy Type
-1 principal residence
-
-#### Loan Purpose
-1 home purchase
-
-#### Action Taken
-1 loan originated
-3 application denied
-
-#### Construction Method
-1 site built
-
-#### Race and Ethnicity
-To be consistent with HUD analyses of race and ethnicity, I followed the methodology that groups all applicants together as Hispanic
+**Disclaimer**: *I do not claim any title or previous employment with the Baltimore City Department of Housing and Community Development. This memo was part of my capstone project for 'MPUP 755: Affordable Housing Strategies' as part of Georgetown University's Urban and Reigonal Planning Master's program.*
