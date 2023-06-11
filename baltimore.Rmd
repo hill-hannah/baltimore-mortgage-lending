@@ -24,11 +24,11 @@ balt_co <-
     coords = c('longitude', 'latitude'),
     crs = 4326)
 
-metro <-
-  read_sf("data/shapefiles/TRAN_BaltimoreMetroSubwayStops_MTA.shp")
-
-mta <-
-    read_sf("data/shapefiles/TRAN_MTABusLines_MTA.shp")
+# metro <-
+#   read_sf("data/shapefiles/TRAN_BaltimoreMetroSubwayStops_MTA.shp")
+# 
+# mta <-
+#     read_sf("data/shapefiles/TRAN_MTABusLines_MTA.shp")
 ```
 
 
@@ -99,39 +99,43 @@ tm_shape(tracts) +
 ```{r read and clean, message = FALSE, warning = FALSE}
 hmda2021 <- read_csv("data/raw/hmda2021.csv")
 
+hmda$race <- ifelse(hmda2021$derived_ethnicity == 
+                      "Hispanic or Latino",
+                      "Hispanic or Latino",
+                      hmda2021$derived_race)
+
+
+
+
+######## above is trying to filter based on HUD race/ethnicity
+
 clean2021 <- 
   hmda2021 %>%
-  
   # filter for conventional and FHA:
-  
   filter(loan_type == '1' | loan_type == '2') %>%
   
   # filter for home purchase and home improvement:
-  
   filter(loan_purpose == '1' | loan_purpose == '2') %>%
   
   # filter for principal residence: 
-  
   filter(occupancy_type == '1') %>%
   
   # pull tract number from combined id
   separate(census_tract, c("county", "tract"), sep='24510') %>%
   select(-county_code, -county)
+
 rm(hmda2021)
 
 hmda2018 <- read_csv("data/raw/hmda2018.csv")
 
 clean2018 <- hmda2018 %>%
     # filter for conventional and FHA:
-  
   filter(loan_type == '1' | loan_type == '2') %>%
   
   # filter for home purchase and home improvement:
-  
   filter(loan_purpose == '1' | loan_purpose == '2') %>%
   
   # filter for principal residence: 
-  
   filter(occupancy_type == '1') %>%
   
   # pull tract number from combined id
@@ -142,17 +146,13 @@ rm(hmda2018)
 hmda2019 <- read_csv("data/raw/hmda2019.csv")
 
 clean2019 <- hmda2019 %>%
-  
     # filter for conventional and FHA:
-  
   filter(loan_type == '1' | loan_type == '2') %>%
   
   # filter for home purchase and home improvement:
-  
   filter(loan_purpose == '1' | loan_purpose == '2') %>%
   
   # filter for principal residence: 
-  
   filter(occupancy_type == '1') %>%
   
   # pull tract number from combined id
@@ -164,15 +164,12 @@ hmda2020 <- read_csv("data/raw/hmda2020.csv")
 
 clean2020 <- hmda2020 %>%
     # filter for conventional and FHA:
-  
   filter(loan_type == '1' | loan_type == '2') %>%
   
   # filter for home purchase and home improvement:
-  
   filter(loan_purpose == '1' | loan_purpose == '2') %>%
   
   # filter for principal residence: 
-  
   filter(occupancy_type == '1') %>%
   
   # pull tract number from combined id
@@ -240,6 +237,7 @@ originated <-
   filter(action_taken == "1") %>%
   group_by(derived_race, year) %>%
   summarise(originated_apps = n())
+
 
 # append the number of apps back into main df:
 clean_hmda <-
@@ -316,7 +314,85 @@ clean_hmda %>%
 
 Question 1: How does mortgage lending approvals, denials, and interest rates look for applicants of 
 different income levels but within the same census tract?
-```{r mortgage denial rates}
+
+```{r denial rate plots}
+clean_hmda %>%
+  filter(action_taken == "3") %>%
+  filter(!derived_race %in% 
+           c("Joint", 
+             "Free Form Text Only",
+             "Native Hawaiian or Other Pacific Islander")) %>%
+  mutate(denial_rate = denied_apps/total_apps) %>%
+  mutate(year = 
+           factor(year, 
+                  labels = 
+                    c("2018",
+                      "2019",
+                      "2020",
+                      "2021")),
+         derived_race = factor(derived_race)) %>% 
+  select(year, derived_race, denial_rate) %>%
+  unique() %>%
+  ggplot(aes(x = derived_race,
+             y = denial_rate,
+             fill = factor(year))) +
+  geom_col(position = "dodge") +
+ #  geom_line() +
+ # geom_hline(yintercept = mean(denial_rate), color = "red") +
+  theme_minimal()
+
+clean_hmda %>%
+  filter(action_taken == "3") %>%
+  filter(!derived_race %in% 
+           c("Joint", 
+             "Free Form Text Only",
+             "Native Hawaiian or Other Pacific Islander")) %>%
+  mutate(denial_rate = denied_apps/total_apps) %>%
+  mutate(year = 
+           factor(year, 
+                  labels = 
+                    c("2018",
+                      "2019",
+                      "2020",
+                      "2021")),
+         derived_race = factor(derived_race)) %>% 
+  select(year, derived_race, denial_rate) %>%
+  unique() %>%
+  ggplot(aes(x = derived_race,
+             y = denial_rate,
+             fill = factor(year))) +
+  geom_col(position = "dodge") +
+ #  geom_line() +
+ # geom_hline(yintercept = mean(denial_rate), color = "red") +
+  theme_minimal() +
+  guides(fill = guide_legend(title = "Year")) +
+  coord_flip() +
+  labs(y = "Denial Rate") +
+  xlab("")
+ggsave("denial_year_race.png")
+
+
+# number of apps by racial group and year:
+clean_hmda %>%
+    filter(!derived_race %in% 
+           c("Joint", 
+             "Free Form Text Only",
+             "Native Hawaiian or Other Pacific Islander")) %>%
+  select(year, derived_race, total_apps) %>%
+  unique() %>%
+  ggplot(aes(x = derived_race,
+             y= total_apps,
+             fill = factor(year))) +
+  geom_col(position = "dodge") +
+  theme_minimal() +
+  guides(fill = guide_legend(title = "Year")) +
+  labs(y = "Number of Applications") +
+  xlab("") +
+  coord_flip()
+ggsave("n_apps_race_year.png")
+```
+
+```{r MAPPING mortgage denial rates}
 
 # USE https://revealnews.org/article/how-we-identified-lending-disparities-in-federal-mortgage-data/ FOR METHODOLOGY!!!!
 tmap_mode("view")
